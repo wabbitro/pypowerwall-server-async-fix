@@ -249,6 +249,46 @@ def test_control_mode_routes_to_cloud(
     mock_cloud.set_mode.assert_called_once_with("self_consumption")
 
 
+def test_control_grid_charging_routes_to_cloud(
+    control_client, connected_gateway, monkeypatch
+):
+    """Test that POST /control/grid_charging uses cloud_control when _cloud_control is set."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    mock_cloud.set_grid_charging.return_value = {"result": "Updated"}
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/grid_charging",
+        json={"value": True},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    mock_cloud.set_grid_charging.assert_called_once_with(True)
+
+
+def test_control_grid_charging_disable(
+    control_client, connected_gateway, monkeypatch
+):
+    """Test that POST /control/grid_charging with False disables grid charging."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    mock_cloud.set_grid_charging.return_value = {"result": "Updated"}
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/grid_charging",
+        json={"value": False},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    mock_cloud.set_grid_charging.assert_called_once_with(False)
+
+
 def test_control_cloud_returns_none_gives_503(
     control_client, connected_gateway, monkeypatch
 ):
