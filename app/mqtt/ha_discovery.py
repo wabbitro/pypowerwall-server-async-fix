@@ -80,8 +80,17 @@ def build_discovery_payloads(
     data_prefix = f"{topic_prefix}/{gateway_id}"
     avail_topic = f"{data_prefix}/availability"
 
+    # Both the per-gateway topic and the global LWT topic are included so that
+    # HA marks entities unavailable when either the gateway goes offline
+    # (per-gateway) OR the server crashes/disconnects (global LWT).
+    # "all" mode: entity is available only when EVERY topic says "online".
+    global_avail_topic = f"{topic_prefix}/availability"
+
     def avail() -> list:
-        return [{"topic": avail_topic, "payload_available": "online", "payload_not_available": "offline"}]
+        return [
+            {"topic": avail_topic, "payload_available": "online", "payload_not_available": "offline"},
+            {"topic": global_avail_topic, "payload_available": "online", "payload_not_available": "offline"},
+        ]
 
     def sensor(
         uid_suffix: str,
@@ -102,7 +111,7 @@ def build_discovery_payloads(
             "state_topic": state_topic,
             "device": device,
             "availability": avail(),
-            "availability_mode": "any",
+            "availability_mode": "all",
         }
         if unit:
             payload["unit_of_measurement"] = unit
@@ -136,7 +145,7 @@ def build_discovery_payloads(
             "payload_off": payload_off,
             "device": device,
             "availability": avail(),
-            "availability_mode": "any",
+            "availability_mode": "all",
         }
         if device_class:
             payload["device_class"] = device_class

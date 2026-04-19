@@ -737,6 +737,14 @@ class GatewayManager:
                 gateway=gateway, online=False, error=str(e), last_updated=now
             )
 
+            # Publish the offline status to MQTT so HA reflects gateway going offline.
+            from app.mqtt.publisher import mqtt_publisher
+            if mqtt_publisher.enabled:
+                asyncio.create_task(
+                    mqtt_publisher.publish_gateway(gateway_id, self.cache[gateway_id]),
+                    name=f"mqtt-publish-{gateway_id}",
+                )
+
     def get_gateway(self, gateway_id: str) -> Optional[GatewayStatus]:
         """Get status for a specific gateway with graceful degradation support.
 

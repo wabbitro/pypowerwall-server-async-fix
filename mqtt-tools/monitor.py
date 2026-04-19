@@ -144,6 +144,7 @@ class MqttWorker(threading.Thread):
             clean_session=True,
         )
         self._client = client
+        client.reconnect_delay_set(min_delay=2, max_delay=30)
         if self.username:
             client.username_pw_set(self.username, self.password)
         client.on_connect = self._on_connect
@@ -155,8 +156,7 @@ class MqttWorker(threading.Thread):
         except Exception as exc:
             self.queue.put(("status", "error", str(exc)))
             return
-        while not self._stop_event.is_set():
-            client.loop(timeout=1.0)
+        client.loop_forever()
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
@@ -183,6 +183,8 @@ class MqttWorker(threading.Thread):
 
 class MonitorApp(tk.Tk):
     POLL_MS = 200
+    STALE_TIMEOUT_S = 30   # seconds without an update before marking a gateway stale
+    STALE_CHECK_MS = 5000  # how often to run the staleness check
 
     def __init__(self, host: str, port: int, prefix: str,
                  username: Optional[str], password: Optional[str]):
@@ -203,6 +205,7 @@ class MonitorApp(tk.Tk):
         self._worker = MqttWorker(host, port, prefix, username, password, self._queue)
         self._worker.start()
         self.after(self.POLL_MS, self._drain_queue)
+        self.after(self.STALE_CHECK_MS, self._check_staleness)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
@@ -292,6 +295,17 @@ class MonitorApp(tk.Tk):
         if card:
             card.refresh(self._gateways[gw_id], self._last_update[gw_id])
 
+    def _check_staleness(self):
+        """Periodically flag gateway cards that have stopped receiving updates."""
+        now = datetime.now()
+        for gw_id, card in self._gateway_frames.items():
+            last = self._last_update.get(gw_id)
+            if last is None:
+                continue
+            age = (now - last).total_seconds()
+            card.set_stale(age > self.STALE_TIMEOUT_S, age)
+        self.after(self.STALE_CHECK_MS, self._check_staleness)
+
     def _on_close(self):
         self._worker.stop()
         self.destroy()
@@ -330,10 +344,17 @@ class GatewayCard(tk.Frame):
 
         right = tk.Frame(hdr, bg=T["header_bg"])
         right.pack(side=tk.RIGHT)
+
+        self._stale_badge = tk.Label(right, text="", font=("", 9, "bold"),
+                                     fg=T["orange"], bg=T["header_bg"])
+        self._stale_badge.pack(side=tk.LEFT, padx=(0, 10))
+
         tk.Label(right, text="Last update  ", font=("", 9),
                  fg=T["time_fg"], bg=T["header_bg"]).pack(side=tk.LEFT)
-        tk.Label(right, textvariable=self._last_var, font=("", 9, "bold"),
-                 fg=T["label_fg"], bg=T["header_bg"]).pack(side=tk.LEFT)
+        self._ts_label = tk.Label(right, textvariable=self._last_var,
+                                  font=("", 9, "bold"),
+                                  fg=T["label_fg"], bg=T["header_bg"])
+        self._ts_label.pack(side=tk.LEFT)
 
         # thin separator
         tk.Frame(inner, bg=T["sep"], height=1).pack(fill=tk.X)
@@ -388,8 +409,21 @@ class GatewayCard(tk.Frame):
         body.columnconfigure(1, weight=1)
         body.columnconfigure(5, weight=1)
 
+    def set_stale(self, stale: bool, age_s: float = 0) -> None:
+        """Show or clear the stale warning badge in the card header."""
+        if stale:
+            mins, secs = divmod(int(age_s), 60)
+            age_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+            self._stale_badge.config(text=f"⚠ No updates for {age_str}")
+            self._ts_label.config(fg=T["orange"])
+        else:
+            self._stale_badge.config(text="")
+            self._ts_label.config(fg=T["label_fg"])
+
     def refresh(self, data: dict[str, str], ts: datetime):
         self._last_var.set(ts.strftime("%H:%M:%S"))
+        # Clear any stale warning when fresh data arrives
+        self.set_stale(False)
 
         for key, label, unit, default_color_key, fmt in SENSORS:
             var = self._vars.get(key)

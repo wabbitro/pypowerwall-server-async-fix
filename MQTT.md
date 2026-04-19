@@ -343,3 +343,117 @@ Powerwall (default)
 - TLS support (`MQTT_TLS=yes`) for production broker connections
 - `MQTT_TLS_INSECURE` defaults to `no` — must be explicitly enabled for dev
 - No MQTT subscribe / inbound command handling in this design (publish-only); control commands remain exclusively through the existing `POST /control/*` HTTP endpoints
+
+
+## Test Instructions - Quick Start
+
+These steps let you verify MQTT end-to-end without a real Powerwall — using only Docker, Mosquitto, and the built-in simulator.
+
+### 1. Start a local Mosquitto broker
+
+```bash
+docker run -d --rm --name mosquitto \
+  -p 1883:1883 \
+  eclipse-mosquitto \
+  mosquitto -c /mosquitto-no-auth.conf
+```
+
+> The `-c /mosquitto-no-auth.conf` flag starts the broker with no authentication, which is fine for local testing.
+
+### 2. Subscribe to all pypowerwall topics (in a separate terminal)
+
+```bash
+docker run --rm eclipse-mosquitto \
+  mosquitto_sub -h host.docker.internal -p 1883 -v -t "pypowerwall/#"
+```
+
+You should see messages like `pypowerwall/default/battery 85.3` appear once per poll cycle.
+
+### 3. Clone the PR branch and install dependencies
+
+```bash
+git clone -b mqtt https://github.com/jasonacox/pypowerwall-server.git
+cd pypowerwall-server
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### 4. Run the server with MQTT enabled
+
+Replace `<gateway_ip>` and `<password>` with your Powerwall's IP and local password (or use the simulator — see step 4b below):
+
+```bash
+MQTT_HOST=localhost \
+MQTT_PORT=1883 \
+MQTT_HA_DISCOVERY=true \
+PW_HOST=<gateway_ip> \
+PW_GW_PWD=<password> \
+uvicorn app.main:app --host 127.0.0.1 --port 8675
+```
+
+#### 4b. No Powerwall? Use the built-in simulator
+
+In one terminal:
+
+```bash
+cd sandbox/pwsimulator
+docker build -t pwsimulator .
+docker run --rm -p 443:443 pwsimulator
+```
+
+Then start the server pointing at the simulator:
+
+```bash
+MQTT_HOST=localhost \
+MQTT_PORT=1883 \
+MQTT_HA_DISCOVERY=true \
+PW_HOST=localhost \
+PW_GW_PWD=password \
+uvicorn app.main:app --host 127.0.0.1 --port 8675
+```
+
+### 5. Verify Home Assistant discovery payloads
+
+```bash
+docker run --rm eclipse-mosquitto \
+  mosquitto_sub -h host.docker.internal -p 1883 -v -t "homeassistant/#"
+```
+
+You should see `homeassistant/sensor/pypowerwall_default_battery/config` (and others) with JSON payloads. These are the auto-discovery messages that tell HA how to create the sensor entities.
+
+### 6. Run the unit tests
+
+No broker required — all MQTT tests use mocks:
+
+```bash
+pytest tests/test_mqtt_publisher.py tests/test_mqtt_ha_discovery.py -v
+```
+
+### 7. (Optional) Run the live monitor GUI
+
+```bash
+pip install paho-mqtt
+python mqtt-tools/monitor.py --host localhost
+```
+
+The GUI shows live battery %, power flows, grid status, and mode, updating every poll cycle. Close the window to exit.
+
+---
+
+### Expected topic output (one poll cycle)
+
+```
+pypowerwall/default/availability     online
+pypowerwall/default/battery          85.3
+pypowerwall/default/solar            2340
+pypowerwall/default/grid             -1100
+pypowerwall/default/home             1240
+pypowerwall/default/powerwall        1200
+pypowerwall/default/grid_status      UP
+pypowerwall/default/mode             self_consumption
+pypowerwall/default/reserve          20.0
+pypowerwall/default/online           true
+pypowerwall/default/aggregates       {...}
+pypowerwall/default/status           {...}
+```
+

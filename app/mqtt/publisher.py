@@ -133,7 +133,7 @@ class MqttPublisher:
                 version=version,
             )
             for topic, payload in payloads:
-                await self._safe_publish(topic, payload, retain=True, qos=1)
+                await self._safe_publish(topic, payload, retain=True, qos=settings.mqtt_qos)
 
             logger.info(
                 f"MQTT HA discovery published for gateway '{gateway_id}' "

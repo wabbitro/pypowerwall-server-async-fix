@@ -154,10 +154,15 @@ class TestBuildDiscoveryPayloads:
         results = self._payloads(gateway_id="main", prefix="pw")
         for topic, payload in results:
             avail_list = payload.get("availability", [])
-            assert len(avail_list) == 1
-            assert avail_list[0]["topic"] == "pw/main/availability"
-            assert avail_list[0]["payload_available"] == "online"
-            assert avail_list[0]["payload_not_available"] == "offline"
+            # Two entries: per-gateway topic and global LWT topic
+            assert len(avail_list) == 2
+            topics = {a["topic"] for a in avail_list}
+            assert "pw/main/availability" in topics
+            assert "pw/availability" in topics
+            for entry in avail_list:
+                assert entry["payload_available"] == "online"
+                assert entry["payload_not_available"] == "offline"
+            assert payload.get("availability_mode") == "all"
 
     def test_custom_prefix_and_ha_prefix(self):
         results = build_discovery_payloads(
