@@ -91,17 +91,27 @@ async def control_api(
 ):
     """Authenticated control endpoint for POST operations.
 
-    Routes to cloud control connection for write operations (set_reserve, set_mode)
-    when available, since TEDAPI doesn't support POST/write APIs.
+    Routes to cloud control connection for write operations (set_reserve, set_mode,
+    set_grid_charging) when available, since TEDAPI doesn't support POST/write APIs.
     Falls back to direct post for cloud-mode or FleetAPI gateways.
     """
     verify_control_token(authorization)
 
     # Map control paths to pypowerwall cloud control methods.
     # Used for TEDAPI gateways with cloud credentials (hybrid mode).
+    # Validate grid_charging requires an explicit boolean value to prevent
+    # silent state changes from malformed or empty payloads.
+    if path == "grid_charging":
+        if "value" not in data or not isinstance(data["value"], bool):
+            raise HTTPException(
+                status_code=400,
+                detail="'value' must be a boolean (true or false)",
+            )
+
     cloud_control_map = {
         "reserve": ("set_reserve", lambda d: [d.get("value", 0)]),
         "mode": ("set_mode", lambda d: [d.get("value", "self_consumption")]),
+        "grid_charging": ("set_grid_charging", lambda d: [d["value"]]),
     }
 
     if path in cloud_control_map and gateway_manager._cloud_control:
