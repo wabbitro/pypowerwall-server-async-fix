@@ -247,9 +247,21 @@ class GatewayManager:
         logger.info("Gateway manager shutdown complete")
 
     async def _poll_gateways(self):
-        """Background task to poll all gateways periodically."""
+        """Background task to poll all gateways on a fixed cadence.
+
+        Uses a fixed-tick scheduling pattern to ensure consistent poll-to-poll
+        intervals regardless of how long the actual poll takes. With the previous
+        sleep-after-poll approach the effective interval was poll_duration + sleep,
+        causing drift (e.g. ~8-9s actual interval when PW_CACHE_EXPIRE=5).
+
+        The loop records the wall-clock time at the start of each cycle and only
+        sleeps for the *remaining* time after all gateways have been polled, so
+        the next cycle starts as close to the configured interval as possible.
+        """
         while True:
             try:
+                loop_start = asyncio.get_event_loop().time()
+
                 # Poll all gateways concurrently
                 tasks = [
                     self._poll_gateway(gateway_id)
@@ -257,7 +269,10 @@ class GatewayManager:
                 ]
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-                await asyncio.sleep(self._poll_interval)
+                # Sleep only the remaining time to maintain fixed interval
+                elapsed = asyncio.get_event_loop().time() - loop_start
+                sleep_time = max(0, self._poll_interval - elapsed)
+                await asyncio.sleep(sleep_time)
             except asyncio.CancelledError:
                 break
             except Exception as e:
