@@ -2,6 +2,13 @@
 
 ## Version History
 
+### [0.3.1] - 2026-05-11
+
+**Fixed:**
+- **Fixed-tick polling cadence** — the background polling loop now uses fixed-tick scheduling instead of sleep-after-poll, so the effective cache refresh interval matches the configured `PW_CACHE_EXPIRE` value. Previously, poll duration + sleep time meant actual intervals were ~8–9 s instead of the configured 5 s (#38). Thanks @sphen13 for thorough testing across 5 s, 10 s, and 15 s intervals!
+- Replaced deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in the polling loop.
+- Corrected docstring: `loop.time()` is a monotonic clock, not wall-clock time.
+
 ### [0.3.0] - 2026-04-18
 
 **Added:**
