@@ -14,7 +14,7 @@ services:
       # Optional: Add cloud auth for control operations
       # First run: python3 -m pypowerwall setup (generates auth files)
       # - PW_EMAIL=your-tesla-account@email.com
-      # - PW_AUTHPATH=/auth
+      # - PW_AUTH_PATH=/auth
       
       - PW_TIMEZONE=America/Los_Angeles
       

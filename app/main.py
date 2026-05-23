@@ -15,7 +15,7 @@ Standard Configuration (TEDAPI):
     For control operations, authenticate with Tesla Cloud:
         python3 -m pypowerwall setup
         PW_EMAIL=tesla@email.com
-        PW_AUTHPATH=/path/to/auth/files
+        PW_AUTH_PATH=/path/to/auth/files
 
 Routing Structure:
     Routes are organized to avoid conflicts:
@@ -662,7 +662,7 @@ Environment Variables:
   PW_GW_PWD          Gateway Wi-Fi password (required for TEDAPI)
   PW_EMAIL           Tesla account email (for Cloud/FleetAPI)
   PW_PASSWORD        Tesla account password (deprecated, use setup)
-  PW_AUTHPATH        Path to store authentication files (default: .)
+  PW_AUTH_PATH        Path to store authentication files (default: .)
   PW_STYLE           Theme style (default: clear)
   PW_SITEID          Specific site ID (for multiple sites)
   PW_CACHE_EXPIRE    Polling interval in seconds (default: 5)
@@ -721,7 +721,7 @@ For more information, visit: https://github.com/jasonacox/pypowerwall-server
             print()
             print("✓ Setup complete!")
             print()
-            print("Auth files created. You can now use PW_EMAIL and PW_AUTHPATH")
+            print("Auth files created. You can now use PW_EMAIL and PW_AUTH_PATH")
             print("to enable Cloud mode control operations.")
             sys.exit(result.returncode)
         except subprocess.CalledProcessError as e:
@@ -743,7 +743,7 @@ For more information, visit: https://github.com/jasonacox/pypowerwall-server
     if args.password:
         os.environ["PW_PASSWORD"] = args.password
     if args.authpath:
-        os.environ["PW_AUTHPATH"] = args.authpath
+        os.environ["PW_AUTH_PATH"] = args.authpath
     if args.style:
         os.environ["PW_STYLE"] = args.style
     if args.siteid:
