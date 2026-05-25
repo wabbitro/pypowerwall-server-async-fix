@@ -1174,6 +1174,339 @@ async def get_api_powerwalls():
     return status.data.powerwalls or {}
 
 
+# ---------------------------------------------------------------------------
+# /pw/* Convenience Endpoints
+#
+# Shorthand endpoints that map to common library calls for backward
+# compatibility with the original pypowerwall proxy.
+# All return JSON and read from the in-memory cache (no blocking calls).
+# ---------------------------------------------------------------------------
+
+
+@router.get("/pw/level")
+async def pw_level():
+    """Battery state of energy (%)."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"percentage": None, "raw_percentage": None}
+
+    return {
+        "percentage": status.data.soe,
+        "raw_percentage": status.data.soe_raw,
+    }
+
+
+@router.get("/pw/power")
+async def pw_power():
+    """Site, solar, battery, load power (W)."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.aggregates:
+        return {"site": 0, "solar": 0, "battery": 0, "load": 0}
+
+    aggregates = status.data.aggregates
+    return {
+        "site": aggregates.get("site", {}).get("instant_power", 0),
+        "solar": aggregates.get("solar", {}).get("instant_power", 0),
+        "battery": aggregates.get("battery", {}).get("instant_power", 0),
+        "load": aggregates.get("load", {}).get("instant_power", 0),
+    }
+
+
+@router.get("/pw/site")
+async def pw_site():
+    """Site (grid) power data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.aggregates:
+        return {}
+
+    return status.data.aggregates.get("site", {})
+
+
+@router.get("/pw/solar")
+async def pw_solar():
+    """Solar power data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.aggregates:
+        return {}
+
+    return status.data.aggregates.get("solar", {})
+
+
+@router.get("/pw/battery")
+async def pw_battery():
+    """Battery power data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"power": 0}
+
+    aggregates = status.data.aggregates or {}
+    battery_power = aggregates.get("battery", {}).get("instant_power", 0)
+
+    return {"power": battery_power}
+
+
+# The /pw/battery_blocks endpoint provides block-level detail.
+
+
+@router.get("/pw/battery_blocks")
+async def pw_battery_blocks():
+    """Battery block details."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.system_status:
+        return []
+
+    return status.data.system_status.get("battery_blocks", [])
+
+
+@router.get("/pw/load")
+async def pw_load():
+    """Load (home consumption) power data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.aggregates:
+        return {}
+
+    return status.data.aggregates.get("load", {})
+
+
+@router.get("/pw/grid")
+async def pw_grid():
+    """Grid (site) power data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.aggregates:
+        return {}
+
+    return status.data.aggregates.get("site", {})
+
+
+@router.get("/pw/home")
+async def pw_home():
+    """Home consumption data (same as load)."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data or not status.data.aggregates:
+        return {}
+
+    return status.data.aggregates.get("load", {})
+
+
+@router.get("/pw/vitals")
+async def pw_vitals():
+    """Device vitals."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {}
+
+    return status.data.vitals or {}
+
+
+@router.get("/pw/temps")
+async def pw_temps():
+    """Temperature metrics."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {}
+
+    return status.data.temps or {}
+
+
+@router.get("/pw/strings")
+async def pw_strings():
+    """Solar string data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {}
+
+    return status.data.strings or {}
+
+
+@router.get("/pw/din")
+async def pw_din():
+    """Device identifier."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"din": None}
+
+    return {"din": status.data.din}
+
+
+@router.get("/pw/uptime")
+async def pw_uptime():
+    """Uptime (seconds)."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"uptime": None}
+
+    return {"uptime": status.data.uptime}
+
+
+@router.get("/pw/version")
+async def pw_version():
+    """Firmware version."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    version = None
+    if status and status.data:
+        version = status.data.version
+
+    if version is None:
+        return {"version": "Unknown", "vint": 0}
+
+    vint = 0
+    try:
+        parts = version.split(".")
+        if len(parts) >= 2:
+            vint = int(parts[0]) * 100 + int(parts[1])
+    except Exception:
+        pass
+
+    return {"version": version, "vint": vint}
+
+
+@router.get("/pw/status")
+async def pw_status():
+    """Status summary."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"status": None}
+
+    return {"status": status.data.status}
+
+
+@router.get("/pw/system_status")
+async def pw_system_status():
+    """System status."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {}
+
+    return status.data.system_status or {}
+
+
+@router.get("/pw/grid_status")
+async def pw_grid_status():
+    """Grid status."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"grid_status": "Unknown"}
+
+    return {"grid_status": status.data.grid_status or "Unknown"}
+
+
+@router.get("/pw/aggregates")
+async def pw_aggregates():
+    """Aggregated meter data."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {}
+
+    return status.data.aggregates or {}
+
+
+@router.get("/pw/site_name")
+async def pw_site_name():
+    """Site name."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"site_name": None}
+
+    return {"site_name": status.data.site_name}
+
+
+@router.get("/pw/alerts")
+async def pw_alerts():
+    """Alerts array/object."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return []
+
+    return status.data.alerts or []
+
+
+@router.get("/pw/is_connected")
+async def pw_is_connected():
+    """Connection boolean."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    return {"is_connected": status.online if status else False}
+
+
+@router.get("/pw/get_reserve")
+async def pw_get_reserve():
+    """Current reserve setting (%)."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"reserve": None}
+
+    return {"reserve": status.data.reserve}
+
+
+@router.get("/pw/get_mode")
+async def pw_get_mode():
+    """Current operating mode."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"mode": None}
+
+    return {"mode": status.data.mode}
+
+
+@router.get("/pw/get_time_remaining")
+async def pw_get_time_remaining():
+    """Estimated backup time remaining."""
+    gateway_id = get_default_gateway()
+    status = gateway_manager.get_gateway(gateway_id)
+
+    if not status or not status.data:
+        return {"time_remaining_hours": None}
+
+    return {"time_remaining_hours": status.data.time_remaining}
+
+
 # NOTE: No catch-all /api/{path:path} routes!
 # All API endpoints must be explicitly defined to ensure:
 # 1. Graceful degradation - all data comes from cache

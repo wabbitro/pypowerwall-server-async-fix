@@ -466,6 +466,233 @@ def test_api_operation_defaults_when_neither_mode_available(client, connected_ga
     assert data["real_mode"] == "self_consumption"  # Hard-coded default
 
 
+# ---------------------------------------------------------------------------
+# /pw/* convenience endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def test_pw_level(client, connected_gateway):
+    """Test /pw/level returns battery percentage."""
+    response = client.get("/pw/level")
+    assert response.status_code == 200
+    data = response.json()
+    assert "percentage" in data
+    assert "raw_percentage" in data
+    assert data["raw_percentage"] == 85.5
+
+
+def test_pw_power(client, connected_gateway):
+    """Test /pw/power returns site, solar, battery, load power."""
+    response = client.get("/pw/power")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["site"] == 100
+    assert data["solar"] == 5000
+    assert data["battery"] == -2000
+    assert data["load"] == 3100
+
+
+def test_pw_site(client, connected_gateway):
+    """Test /pw/site returns site power data."""
+    response = client.get("/pw/site")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instant_power"] == 100
+
+
+def test_pw_solar(client, connected_gateway):
+    """Test /pw/solar returns solar power data."""
+    response = client.get("/pw/solar")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instant_power"] == 5000
+
+
+def test_pw_battery(client, connected_gateway):
+    """Test /pw/battery returns battery power (legacy endpoint)."""
+    response = client.get("/pw/battery")
+    assert response.status_code == 200
+    data = response.json()
+    assert "power" in data
+
+
+def test_pw_battery_blocks(client, connected_gateway):
+    """Test /pw/battery_blocks returns block details."""
+    response = client.get("/pw/battery_blocks")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0]["PackageSerialNumber"] == "TG1234567890AB"
+
+
+def test_pw_load(client, connected_gateway):
+    """Test /pw/load returns load power data."""
+    response = client.get("/pw/load")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instant_power"] == 3100
+
+
+def test_pw_grid(client, connected_gateway):
+    """Test /pw/grid returns grid (site) power data."""
+    response = client.get("/pw/grid")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instant_power"] == 100
+
+
+def test_pw_home(client, connected_gateway):
+    """Test /pw/home returns home consumption data (same as load)."""
+    response = client.get("/pw/home")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instant_power"] == 3100
+
+
+def test_pw_vitals(client, connected_gateway):
+    """Test /pw/vitals returns device vitals."""
+    response = client.get("/pw/vitals")
+    assert response.status_code == 200
+    data = response.json()
+    assert "TEPOD--1234" in data
+    assert "TEPINV--1234" in data
+
+
+def test_pw_temps(client, connected_gateway):
+    """Test /pw/temps returns temperature metrics."""
+    response = client.get("/pw/temps")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+
+
+def test_pw_strings(client, connected_gateway):
+    """Test /pw/strings returns solar string data."""
+    response = client.get("/pw/strings")
+    assert response.status_code == 200
+    data = response.json()
+    assert "A" in data
+
+
+def test_pw_din(client, connected_gateway):
+    """Test /pw/din returns device identifier."""
+    response = client.get("/pw/din")
+    assert response.status_code == 200
+    data = response.json()
+    assert "din" in data
+
+
+def test_pw_uptime(client, connected_gateway):
+    """Test /pw/uptime returns uptime."""
+    response = client.get("/pw/uptime")
+    assert response.status_code == 200
+    data = response.json()
+    assert "uptime" in data
+
+
+def test_pw_version(client, connected_gateway):
+    """Test /pw/version returns firmware version."""
+    response = client.get("/pw/version")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["version"] == "23.44.0"
+    assert data["vint"] == 2344
+
+
+def test_pw_status(client, connected_gateway):
+    """Test /pw/status returns status summary."""
+    response = client.get("/pw/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "Running"
+
+
+def test_pw_system_status(client, connected_gateway):
+    """Test /pw/system_status returns system status."""
+    response = client.get("/pw/system_status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "battery_blocks" in data
+    assert "nominal_full_pack_energy" in data
+
+
+def test_pw_grid_status(client, connected_gateway):
+    """Test /pw/grid_status returns grid status."""
+    response = client.get("/pw/grid_status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grid_status"] == "UP"
+
+
+def test_pw_aggregates(client, connected_gateway):
+    """Test /pw/aggregates returns aggregated meter data."""
+    response = client.get("/pw/aggregates")
+    assert response.status_code == 200
+    data = response.json()
+    assert "site" in data
+    assert "solar" in data
+    assert "battery" in data
+    assert "load" in data
+
+
+def test_pw_site_name(client, connected_gateway):
+    """Test /pw/site_name returns site name."""
+    response = client.get("/pw/site_name")
+    assert response.status_code == 200
+    data = response.json()
+    assert "site_name" in data
+
+
+def test_pw_alerts(client, connected_gateway):
+    """Test /pw/alerts returns alerts array."""
+    response = client.get("/pw/alerts")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+
+
+def test_pw_is_connected(client, connected_gateway):
+    """Test /pw/is_connected returns connection boolean."""
+    response = client.get("/pw/is_connected")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_connected"] is True
+
+
+def test_pw_get_reserve(client, connected_gateway):
+    """Test /pw/get_reserve returns reserve setting."""
+    response = client.get("/pw/get_reserve")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reserve"] == 20
+
+
+def test_pw_get_mode(client, connected_gateway):
+    """Test /pw/get_mode returns operating mode."""
+    # Set mode on cached data (simulates a completed poll cycle)
+    connected_gateway.data.mode = "self_consumption"
+    response = client.get("/pw/get_mode")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["mode"] == "self_consumption"
+
+
+def test_pw_get_time_remaining(client, connected_gateway):
+    """Test /pw/get_time_remaining returns estimated backup time."""
+    response = client.get("/pw/get_time_remaining")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["time_remaining_hours"] == 8.5
+
+
+def test_pw_endpoints_no_gateway(client, mock_gateway_manager):
+    """Test /pw/* endpoints return 503 when no gateway available."""
+    for path in ["/pw/level", "/pw/power", "/pw/vitals", "/pw/version"]:
+        response = client.get(path)
+        assert response.status_code == 503
+
+
 def test_api_operation_all_mode_values(client, connected_gateway):
     """Test /api/operation correctly returns each valid mode string."""
     for mode in ("self_consumption", "backup", "autonomous"):
