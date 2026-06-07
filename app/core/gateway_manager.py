@@ -272,6 +272,22 @@ class GatewayManager:
                     )
                     continue
 
+                # Warn when both gw_pwd and rsa_key_path are set alongside host.
+                # pypowerwall selects TEDAPI v1r (RSA auth) in this case, which
+                # limits follower Powerwall data to primary-only unless a wifi_host
+                # is also provided for the follower WiFi fallback path.
+                if config.host and config.gw_pwd and config.rsa_key_path and not config.wifi_host:
+                    logger.warning(
+                        "Gateway %s: PW_HOST + PW_GW_PWD + PW_RSA_KEY_PATH are "
+                        "all set — TEDAPI v1r mode is active but follower "
+                        "Powerwall data will be limited to the primary unit only. "
+                        "To see all Powerwalls, either: "
+                        "(a) set PW_WIFI_HOST=<gateway-ip> to enable WiFi fallback "
+                        "for follower queries while keeping v1r, or "
+                        "(b) remove PW_RSA_KEY_PATH to use TEDAPI full mode.",
+                        config.id,
+                    )
+
                 # Auto-enable cloud_mode if email is set but no host
                 if config.email and not config.host:
                     config.cloud_mode = True
@@ -506,11 +522,16 @@ class GatewayManager:
 
                     # Try to get site_id for cloud mode gateways
                     gateway = self.gateways[gateway_id]
-                    mode_label = (
-                        "FleetAPI"
-                        if gateway.fleetapi
-                        else ("Cloud" if gateway.cloud_mode else "TEDAPI")
-                    )
+                    if gateway.fleetapi:
+                        mode_label = "FleetAPI"
+                    elif gateway.cloud_mode:
+                        mode_label = "Cloud"
+                    elif config.rsa_key_path and config.wifi_host:
+                        mode_label = "TEDAPI v1r + WiFi"
+                    elif config.rsa_key_path:
+                        mode_label = "TEDAPI v1r"
+                    else:
+                        mode_label = "TEDAPI WiFi"
 
                     if gateway.cloud_mode or gateway.fleetapi:
                         try:
