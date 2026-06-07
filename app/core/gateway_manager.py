@@ -62,6 +62,7 @@ Performance:
 import asyncio
 import json
 import logging
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -106,6 +107,83 @@ class GatewayManager:
         # alongside a TEDAPI gateway. This enables hybrid operation:
         # TEDAPI for fast local reads, cloud for control writes.
         self._cloud_control: Optional[pypowerwall.Powerwall] = None
+
+    @staticmethod
+    def _expected_battery_block_count(data: Optional[PowerwallData]) -> int:
+        """Return expected battery block count from cached TEDAPI config when available."""
+        if not data or not isinstance(data.tedapi_config, dict):
+            return 0
+        battery_blocks = data.tedapi_config.get("battery_blocks") or []
+        return len(battery_blocks) if isinstance(battery_blocks, list) else 0
+
+    @staticmethod
+    def _count_tepinv_devices(vitals: Optional[Dict[str, Any]]) -> int:
+        """Count Powerwall inverter entries in vitals payload."""
+        if not isinstance(vitals, dict):
+            return 0
+        return sum(1 for key in vitals if key.startswith("TEPINV--"))
+
+    @staticmethod
+    def _count_system_status_blocks(system_status: Optional[Dict[str, Any]]) -> int:
+        """Count battery blocks in cached system status payload."""
+        if not isinstance(system_status, dict):
+            return 0
+        battery_blocks = system_status.get("battery_blocks") or []
+        return len(battery_blocks) if isinstance(battery_blocks, list) else 0
+
+    def _preserve_complete_multi_pw_snapshot(
+        self, gateway_id: str, data: PowerwallData
+    ) -> PowerwallData:
+        """Avoid downgrading a complete multi-PW TEDAPI snapshot with a partial one.
+
+        TEDAPI multi-PW data is synthesized in pypowerwall from follower vitals.
+        If a single poll cycle drops follower data, the server can otherwise cache a
+        one-PW snapshot even though the gateway config still reports multiple blocks.
+        """
+        previous = self._last_successful_data.get(gateway_id)
+        if not previous:
+            return data
+
+        expected_blocks = max(
+            self._expected_battery_block_count(data),
+            self._expected_battery_block_count(previous),
+        )
+        if expected_blocks < 2:
+            return data
+
+        current_vitals_count = self._count_tepinv_devices(data.vitals)
+        previous_vitals_count = self._count_tepinv_devices(previous.vitals)
+        current_status_count = self._count_system_status_blocks(data.system_status)
+        previous_status_count = self._count_system_status_blocks(previous.system_status)
+
+        if (
+            current_vitals_count < expected_blocks
+            and previous_vitals_count >= expected_blocks
+        ):
+            logger.warning(
+                "Preserving prior complete vitals snapshot for %s: expected %d TEPINV blocks, got %d in current poll",
+                gateway_id,
+                expected_blocks,
+                current_vitals_count,
+            )
+            data.vitals = deepcopy(previous.vitals)
+
+        if (
+            current_status_count < expected_blocks
+            and previous_status_count >= expected_blocks
+        ):
+            logger.warning(
+                "Preserving prior complete system_status snapshot for %s: expected %d battery blocks, got %d in current poll",
+                gateway_id,
+                expected_blocks,
+                current_status_count,
+            )
+            data.system_status = deepcopy(previous.system_status)
+
+        if not data.tedapi_config and previous.tedapi_config:
+            data.tedapi_config = deepcopy(previous.tedapi_config)
+
+        return data
 
     async def initialize(
         self, gateway_configs: List[GatewayConfig], poll_interval: int = 5
@@ -687,6 +765,10 @@ class GatewayManager:
                         pass
             except (asyncio.TimeoutError, Exception) as e:
                 logger.debug(f"Powerwalls not available for {gateway_id}: {e}")
+
+            # Guard against partial TEDAPI follower snapshots replacing a complete
+            # multi-Powerwall view for a single poll cycle.
+            data = self._preserve_complete_multi_pw_snapshot(gateway_id, data)
 
             # Update cache
             gateway = self.gateways[gateway_id]

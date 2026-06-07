@@ -128,6 +128,105 @@ async def test_polling_with_missing_optional_data(mock_gateway_manager, mock_pyp
     assert status.data.strings is None
 
 
+@pytest.mark.asyncio
+async def test_polling_preserves_complete_multi_pw_snapshot_on_partial_tedapi_drop(
+    mock_gateway_manager, mock_pypowerwall
+):
+    """Keep the richer multi-PW TEDAPI snapshot when one poll transiently drops a follower."""
+    from app.models.gateway import Gateway, GatewayStatus, PowerwallData
+
+    gateway = Gateway(
+        id="multi-pw-test",
+        name="Multi PW Test",
+        host="192.168.1.100",
+        gw_pwd="password123",
+    )
+
+    previous_vitals = {
+        "TEPINV--leader": {"PINV_Fout": 60.0},
+        "TEPINV--follower": {"PINV_Fout": 60.1},
+    }
+    previous_system_status = {
+        "battery_blocks": [
+            {"PackageSerialNumber": "PW1", "f_out": 60.0},
+            {"PackageSerialNumber": "PW2", "f_out": 60.1},
+        ]
+    }
+    previous_tedapi_config = {
+        "battery_blocks": [
+            {"type": "Powerwall3"},
+            {"type": "Powerwall3Follower"},
+        ]
+    }
+
+    mock_gateway_manager.gateways["multi-pw-test"] = gateway
+    mock_gateway_manager.connections["multi-pw-test"] = mock_pypowerwall
+    mock_gateway_manager.cache["multi-pw-test"] = GatewayStatus(
+        gateway=gateway, online=False
+    )
+    mock_gateway_manager._last_successful_data["multi-pw-test"] = PowerwallData(
+        aggregates=mock_pypowerwall.poll.return_value,
+        soe_raw=85.5,
+        soe=raw_to_tesla_battery_percent(85.5),
+        vitals=previous_vitals,
+        system_status=previous_system_status,
+        tedapi_config=previous_tedapi_config,
+        timestamp=1111.0,
+    )
+
+    mock_pypowerwall.vitals.return_value = {
+        "TEPINV--leader": {"PINV_Fout": 60.0},
+    }
+    mock_pypowerwall.system_status.return_value = {
+        "battery_blocks": [
+            {"PackageSerialNumber": "PW1", "f_out": 60.0},
+        ]
+    }
+    mock_pypowerwall.tedapi.get_config.return_value = previous_tedapi_config
+
+    await mock_gateway_manager._poll_gateway("multi-pw-test")
+
+    status = mock_gateway_manager.get_gateway("multi-pw-test")
+    assert status.online is True
+    assert len(status.data.tedapi_config["battery_blocks"]) == 2
+    assert list(status.data.vitals.keys()) == list(previous_vitals.keys())
+    assert (
+        len(status.data.system_status["battery_blocks"])
+        == len(previous_system_status["battery_blocks"])
+        == 2
+    )
+    assert (
+        status.data.system_status["battery_blocks"][1]["PackageSerialNumber"] == "PW2"
+    )
+
+
+def test_preserve_complete_multi_pw_snapshot_ignores_single_pw_system(
+    mock_gateway_manager,
+):
+    """Single-PW systems should not trigger the multi-PW preservation guard."""
+    from app.models.gateway import PowerwallData
+
+    gateway_id = "single-pw-test"
+    previous = PowerwallData(
+        vitals={"TEPINV--leader": {"PINV_Fout": 60.0}},
+        system_status={"battery_blocks": [{"PackageSerialNumber": "PW1"}]},
+        tedapi_config={"battery_blocks": [{"type": "Powerwall3"}]},
+    )
+    current = PowerwallData(
+        vitals={"TEPINV--leader": {"PINV_Fout": 59.9}},
+        system_status={"battery_blocks": [{"PackageSerialNumber": "PW1-new"}]},
+        tedapi_config={"battery_blocks": [{"type": "Powerwall3"}]},
+    )
+    mock_gateway_manager._last_successful_data[gateway_id] = previous
+
+    result = mock_gateway_manager._preserve_complete_multi_pw_snapshot(
+        gateway_id, current
+    )
+
+    assert result.vitals["TEPINV--leader"]["PINV_Fout"] == 59.9
+    assert result.system_status["battery_blocks"][0]["PackageSerialNumber"] == "PW1-new"
+
+
 def test_gateway_rsa_key_configured():
     """Test rsa_key_configured flag and path disclosure prevention."""
     from app.models.gateway import Gateway
