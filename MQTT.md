@@ -147,6 +147,27 @@ Base path: `{MQTT_TOPIC_PREFIX}/{gateway_id}/`
 | `pypowerwall/{gw}/aggregates` | Full `/api/meters/aggregates` JSON |
 | `pypowerwall/{gw}/status` | `{"online": true, "soe": 85.3, "mode": "...", ...}` summary |
 
+### Solar string topics (per-string voltage, current, power)
+
+Individual string topics are published when string data is available from the gateway:
+
+| Topic | Value | Unit |
+|-------|-------|------|
+| `pypowerwall/{gw}/strings/{A-F}/voltage` | `240.50` | `V` |
+| `pypowerwall/{gw}/strings/{A-F}/current` | `1.50` | `A` |
+| `pypowerwall/{gw}/strings/{A-F}/power` | `360.75` | `W` |
+| `pypowerwall/{gw}/strings/{A-F}` | `{"Voltage": ..., "Current": ..., "Power": ...}` | JSON |
+
+### PW3 paired-string rollups (AB, CD, EF)
+
+For Powerwall 3 systems where inputs are physically paired, derived rollups are published:
+
+| Topic | Value | Unit |
+|-------|-------|------|
+| `pypowerwall/{gw}/strings/{AB,CD,EF}/voltage` | `240.50` | `V` (from first string in pair) |
+| `pypowerwall/{gw}/strings/{AB,CD,EF}/current` | `3.00` | `A` (sum of both strings) |
+| `pypowerwall/{gw}/strings/{AB,CD,EF}/power` | `721.50` | `W` (sum of both strings) |
+
 ### Availability topic (for HA)
 
 | Topic | Value |
@@ -455,5 +476,18 @@ pypowerwall/default/reserve          20.0
 pypowerwall/default/online           true
 pypowerwall/default/aggregates       {...}
 pypowerwall/default/status           {...}
+pypowerwall/default/strings/A/voltage   240.50
+pypowerwall/default/strings/A/current   1.50
+pypowerwall/default/strings/A/power     360.75
+pypowerwall/default/strings/A           {"Voltage": 240.5, "Current": 1.5, "Power": 360.75, ...}
+pypowerwall/default/strings/B/voltage   240.25
+pypowerwall/default/strings/B/current   1.25
+pypowerwall/default/strings/B/power     300.31
+pypowerwall/default/strings/B           {...}
+...
+pypowerwall/default/strings/AB/voltage  240.50
+pypowerwall/default/strings/AB/current  2.75
+pypowerwall/default/strings/AB/power    661.06
+...
 ```
 

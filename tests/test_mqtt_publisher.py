@@ -372,3 +372,139 @@ class TestMqttFireAndForget:
         # Called via create_task in gateway_manager; must not raise here
         task = asyncio.create_task(pub.publish_gateway("test-gw", status))
         await task  # no exception expected
+
+
+class TestMqttStringTopics:
+    """Verify solar string MQTT topics are published correctly."""
+
+    def _make_publisher(self, monkeypatch) -> MqttPublisher:
+        monkeypatch.setenv("MQTT_HOST", "localhost")
+        monkeypatch.setenv("MQTT_PORT", "1883")
+        monkeypatch.setenv("MQTT_TOPIC_PREFIX", "pypowerwall")
+        monkeypatch.setenv("MQTT_QOS", "1")
+        monkeypatch.setenv("MQTT_RETAIN", "true")
+        import importlib
+        import app.config as cfg_module
+        importlib.reload(cfg_module)
+        pub = MqttPublisher()
+        mock_client = AsyncMock()
+        pub._client = mock_client
+        pub._connected = True
+        return pub
+
+    def _make_status_with_strings(self, strings: dict, **kwargs) -> GatewayStatus:
+        gateway = Gateway(
+            id="test-gw", name="Test", host="192.168.91.1", gw_pwd="test", online=True
+        )
+        data = PowerwallData(
+            soe=80.0,
+            soe_raw=82.0,
+            aggregates={
+                "solar": {"instant_power": 5000.0},
+                "site": {"instant_power": 0.0},
+                "load": {"instant_power": 5000.0},
+                "battery": {"instant_power": 0.0},
+            },
+            grid_status="UP",
+            mode="self_consumption",
+            reserve=20.0,
+            version="23.44.0",
+            strings=strings,
+            timestamp=1_000_000.0,
+        )
+        return GatewayStatus(gateway=gateway, data=data, online=True, last_updated=1_000_000.0)
+
+    @pytest.mark.asyncio
+    async def test_per_string_topics_published(self, monkeypatch):
+        """Individual string A-F voltage/current/power topics are published."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings({
+            "A": {"Voltage": 240.5, "Current": 1.5, "Power": 360.75, "State": "PV_Active"},
+            "B": {"Voltage": 238.0, "Current": 1.2, "Power": 285.6, "State": "PV_Active"},
+        })
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+
+        assert "pypowerwall/test-gw/strings/A/voltage" in published
+        assert published["pypowerwall/test-gw/strings/A/voltage"] == "240.50"
+        assert "pypowerwall/test-gw/strings/A/current" in published
+        assert published["pypowerwall/test-gw/strings/A/current"] == "1.50"
+        assert "pypowerwall/test-gw/strings/A/power" in published
+        assert published["pypowerwall/test-gw/strings/A/power"] == "360.75"
+
+        assert "pypowerwall/test-gw/strings/B/voltage" in published
+        assert published["pypowerwall/test-gw/strings/B/voltage"] == "238.00"
+
+    @pytest.mark.asyncio
+    async def test_per_string_json_topic(self, monkeypatch):
+        """Full string data is published as JSON on the bare string topic."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings({
+            "A": {"Voltage": 240.5, "Current": 1.5, "Power": 360.75},
+        })
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+        assert "pypowerwall/test-gw/strings/A" in published
+        data = json.loads(published["pypowerwall/test-gw/strings/A"])
+        assert data["Voltage"] == 240.5
+        assert data["Current"] == 1.5
+
+    @pytest.mark.asyncio
+    async def test_paired_rollups_ab_cd_ef(self, monkeypatch):
+        """PW3 paired-string rollups (AB, CD, EF) are published with summed current/power."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings({
+            "A": {"Voltage": 240.0, "Current": 1.5, "Power": 360.0},
+            "B": {"Voltage": 240.0, "Current": 1.25, "Power": 300.0},
+            "C": {"Voltage": 238.0, "Current": 2.0, "Power": 476.0},
+            "D": {"Voltage": 238.0, "Current": 1.0, "Power": 238.0},
+            "E": {"Voltage": 236.0, "Current": 0.5, "Power": 118.0},
+            "F": {"Voltage": 236.0, "Current": 0.8, "Power": 188.8},
+        })
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+
+        # AB pair
+        assert published["pypowerwall/test-gw/strings/AB/voltage"] == "240.00"
+        assert published["pypowerwall/test-gw/strings/AB/current"] == "2.75"
+        assert published["pypowerwall/test-gw/strings/AB/power"] == "660.00"
+
+        # CD pair
+        assert published["pypowerwall/test-gw/strings/CD/voltage"] == "238.00"
+        assert published["pypowerwall/test-gw/strings/CD/current"] == "3.00"
+        assert published["pypowerwall/test-gw/strings/CD/power"] == "714.00"
+
+        # EF pair
+        assert published["pypowerwall/test-gw/strings/EF/voltage"] == "236.00"
+        assert published["pypowerwall/test-gw/strings/EF/current"] == "1.30"
+        assert published["pypowerwall/test-gw/strings/EF/power"] == "306.80"
+
+    @pytest.mark.asyncio
+    async def test_no_strings_publishes_nothing_extra(self, monkeypatch):
+        """When strings is None, no string topics are published."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings(None)
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+        string_topics = [t for t in published if "/strings/" in t]
+        assert len(string_topics) == 0
+
+    @pytest.mark.asyncio
+    async def test_partial_strings_only_publishes_available_pairs(self, monkeypatch):
+        """Only AB is published when only A and B strings exist."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings({
+            "A": {"Voltage": 240.0, "Current": 1.5, "Power": 360.0},
+            "B": {"Voltage": 240.0, "Current": 1.0, "Power": 240.0},
+        })
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+        assert "pypowerwall/test-gw/strings/AB/voltage" in published
+        # CD and EF should not be published (no C/D/E/F strings)
+        assert "pypowerwall/test-gw/strings/CD/voltage" not in published
+        assert "pypowerwall/test-gw/strings/EF/voltage" not in published

@@ -44,6 +44,15 @@ Topic layout
     {prefix}/{gateway_id}/aggregates      JSON   — full aggregates dict
     {prefix}/{gateway_id}/status          JSON   — summary dict
     {prefix}/{gateway_id}/availability    str    — "online" | "offline" (LWT)
+
+    {prefix}/{gateway_id}/strings/{A-F}/voltage   float — V
+    {prefix}/{gateway_id}/strings/{A-F}/current   float — A
+    {prefix}/{gateway_id}/strings/{A-F}/power     float — W
+    {prefix}/{gateway_id}/strings/{A-F}           JSON  — full string data
+
+    {prefix}/{gateway_id}/strings/{AB,CD,EF}/voltage  float — V (from first string in pair)
+    {prefix}/{gateway_id}/strings/{AB,CD,EF}/current  float — A (sum of pair)
+    {prefix}/{gateway_id}/strings/{AB,CD,EF}/power    float — W (sum of pair)
 """
 import asyncio
 import json
@@ -250,6 +259,72 @@ class MqttPublisher:
                         f"{prefix}/version", str(data.version), retain, qos
                     )
 
+                # Solar string topics (voltage, current, power per string)
+                if data.strings and isinstance(data.strings, dict):
+                    strings_prefix = f"{prefix}/strings"
+                    for string_id, string_data in data.strings.items():
+                        if not isinstance(string_data, dict):
+                            continue
+                        s_prefix = f"{strings_prefix}/{string_id}"
+                        for metric in ("Voltage", "Current", "Power"):
+                            val = string_data.get(metric)
+                            if val is not None:
+                                try:
+                                    await self._safe_publish(
+                                        f"{s_prefix}/{metric.lower()}",
+                                        f"{float(val):.2f}",
+                                        retain, qos,
+                                    )
+                                except (ValueError, TypeError):
+                                    pass
+                        # Full string JSON for consumers that want everything
+                        await self._safe_publish(
+                            s_prefix,
+                            json.dumps(string_data),
+                            retain, qos,
+                        )
+
+                    # Derived paired-string rollups for PW3 (AB, CD, EF)
+                    # PW3 physically pairs inputs A+B, C+D, E+F
+                    for pair_name, (a, b) in {
+                        "AB": ("A", "B"),
+                        "CD": ("C", "D"),
+                        "EF": ("E", "F"),
+                    }.items():
+                        sa = data.strings.get(a, {})
+                        sb = data.strings.get(b, {})
+                        if not isinstance(sa, dict) or not isinstance(sb, dict):
+                            continue
+                        # Only publish if at least one string in the pair exists
+                        if not sa and not sb:
+                            continue
+                        p_prefix = f"{strings_prefix}/{pair_name}"
+                        # Voltage: take the first string's value (identical for paired inputs)
+                        v_a = _safe_float(sa.get("Voltage"))
+                        if v_a is not None:
+                            await self._safe_publish(
+                                f"{p_prefix}/voltage",
+                                f"{v_a:.2f}", retain, qos,
+                            )
+                        # Current: sum of both strings
+                        c_a = _safe_float(sa.get("Current"))
+                        c_b = _safe_float(sb.get("Current"))
+                        if c_a is not None or c_b is not None:
+                            total_c = (c_a or 0.0) + (c_b or 0.0)
+                            await self._safe_publish(
+                                f"{p_prefix}/current",
+                                f"{total_c:.2f}", retain, qos,
+                            )
+                        # Power: sum of both strings
+                        p_a = _safe_float(sa.get("Power"))
+                        p_b = _safe_float(sb.get("Power"))
+                        if p_a is not None or p_b is not None:
+                            total_p = (p_a or 0.0) + (p_b or 0.0)
+                            await self._safe_publish(
+                                f"{p_prefix}/power",
+                                f"{total_p:.2f}", retain, qos,
+                            )
+
                 # Summary JSON topic
                 summary = {
                     "online": status.online,
@@ -411,6 +486,16 @@ class MqttPublisher:
 
         self._connected = False
         self._client = None
+
+
+def _safe_float(val) -> Optional[float]:
+    """Convert a value to float, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
 
 
 def _extract_power(aggregates: dict, key: str) -> Optional[float]:
