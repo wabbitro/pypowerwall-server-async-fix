@@ -168,6 +168,15 @@ For Powerwall 3 systems where inputs are physically paired, derived rollups are 
 | `pypowerwall/{gw}/strings/{AB,CD,EF}/current` | `3.00` | `A` (sum of both strings) |
 | `pypowerwall/{gw}/strings/{AB,CD,EF}/power` | `721.50` | `W` (sum of both strings) |
 
+For multi-PW3 single-gateway setups (e.g. two PW3s on one gateway), the strings endpoint
+may return `A`–`F` *and* `A1`–`F1`. Paired rollups are generated per suffix automatically:
+
+| Topic | Value | Unit |
+|-------|-------|------|
+| `pypowerwall/{gw}/strings/AB1/voltage` | `310.00` | `V` |
+| `pypowerwall/{gw}/strings/AB1/current` | `0.40` | `A` |
+| `pypowerwall/{gw}/strings/AB1/power` | `124.00` | `W` |
+
 ### Availability topic (for HA)
 
 | Topic | Value |

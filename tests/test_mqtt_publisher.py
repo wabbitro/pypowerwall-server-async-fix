@@ -508,3 +508,48 @@ class TestMqttStringTopics:
         # CD and EF should not be published (no C/D/E/F strings)
         assert "pypowerwall/test-gw/strings/CD/voltage" not in published
         assert "pypowerwall/test-gw/strings/EF/voltage" not in published
+
+    @pytest.mark.asyncio
+    async def test_multi_pw3_single_gateway_rollups(self, monkeypatch):
+        """Multi-PW3 on single gateway: A-F and A1-F1 each get paired rollups."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings({
+            # First PW3
+            "A": {"Voltage": 284.0, "Current": 1.0, "Power": 284.0},
+            "B": {"Voltage": 284.0, "Current": 0.95, "Power": 269.8},
+            "C": {"Voltage": 0.0, "Current": 0.0, "Power": 0.0},
+            "D": {"Voltage": 0.0, "Current": 0.0, "Power": 0.0},
+            "E": {"Voltage": 0.0, "Current": 0.0, "Power": 0.0},
+            "F": {"Voltage": 0.0, "Current": 0.0, "Power": 0.0},
+            # Second PW3
+            "A1": {"Voltage": 310.0, "Current": 0.2, "Power": 62.0},
+            "B1": {"Voltage": 310.0, "Current": 0.2, "Power": 62.0},
+            "C1": {"Voltage": 388.0, "Current": 0.25, "Power": 97.0},
+            "D1": {"Voltage": 388.0, "Current": 0.15, "Power": 58.2},
+            "E1": {"Voltage": 422.0, "Current": 1.2, "Power": 506.4},
+            "F1": {"Voltage": 422.0, "Current": 1.2, "Power": 506.4},
+        })
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+
+        # First PW3 rollups
+        assert published["pypowerwall/test-gw/strings/AB/voltage"] == "284.00"
+        assert published["pypowerwall/test-gw/strings/AB/current"] == "1.95"
+        assert published["pypowerwall/test-gw/strings/AB/power"] == "553.80"
+
+        # Second PW3 rollups (A1+B1, C1+D1, E1+F1)
+        assert published["pypowerwall/test-gw/strings/AB1/voltage"] == "310.00"
+        assert published["pypowerwall/test-gw/strings/AB1/current"] == "0.40"
+        assert published["pypowerwall/test-gw/strings/AB1/power"] == "124.00"
+
+        assert published["pypowerwall/test-gw/strings/CD1/voltage"] == "388.00"
+        assert published["pypowerwall/test-gw/strings/CD1/current"] == "0.40"
+        assert published["pypowerwall/test-gw/strings/CD1/power"] == "155.20"
+
+        assert published["pypowerwall/test-gw/strings/EF1/voltage"] == "422.00"
+        assert published["pypowerwall/test-gw/strings/EF1/current"] == "2.40"
+        assert published["pypowerwall/test-gw/strings/EF1/power"] == "1012.80"
+
+        # Individual A1 topic also published
+        assert published["pypowerwall/test-gw/strings/A1/voltage"] == "310.00"

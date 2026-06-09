@@ -53,6 +53,8 @@ Topic layout
     {prefix}/{gateway_id}/strings/{AB,CD,EF}/voltage  float — V (from first string in pair)
     {prefix}/{gateway_id}/strings/{AB,CD,EF}/current  float — A (sum of pair)
     {prefix}/{gateway_id}/strings/{AB,CD,EF}/power    float — W (sum of pair)
+
+    Multi-PW3 single-gateway: also AB1/CD1/EF1, AB2/CD2/EF2 etc.
 """
 import asyncio
 import json
@@ -284,46 +286,55 @@ class MqttPublisher:
                             retain, qos,
                         )
 
-                    # Derived paired-string rollups for PW3 (AB, CD, EF)
-                    # PW3 physically pairs inputs A+B, C+D, E+F
-                    for pair_name, (a, b) in {
-                        "AB": ("A", "B"),
-                        "CD": ("C", "D"),
-                        "EF": ("E", "F"),
-                    }.items():
-                        sa = data.strings.get(a, {})
-                        sb = data.strings.get(b, {})
-                        if not isinstance(sa, dict) or not isinstance(sb, dict):
-                            continue
-                        # Only publish if at least one string in the pair exists
-                        if not sa and not sb:
-                            continue
-                        p_prefix = f"{strings_prefix}/{pair_name}"
-                        # Voltage: take the first string's value (identical for paired inputs)
-                        v_a = _safe_float(sa.get("Voltage"))
-                        if v_a is not None:
-                            await self._safe_publish(
-                                f"{p_prefix}/voltage",
-                                f"{v_a:.2f}", retain, qos,
-                            )
-                        # Current: sum of both strings
-                        c_a = _safe_float(sa.get("Current"))
-                        c_b = _safe_float(sb.get("Current"))
-                        if c_a is not None or c_b is not None:
-                            total_c = (c_a or 0.0) + (c_b or 0.0)
-                            await self._safe_publish(
-                                f"{p_prefix}/current",
-                                f"{total_c:.2f}", retain, qos,
-                            )
-                        # Power: sum of both strings
-                        p_a = _safe_float(sa.get("Power"))
-                        p_b = _safe_float(sb.get("Power"))
-                        if p_a is not None or p_b is not None:
-                            total_p = (p_a or 0.0) + (p_b or 0.0)
-                            await self._safe_publish(
-                                f"{p_prefix}/power",
-                                f"{total_p:.2f}", retain, qos,
-                            )
+                    # Derived paired-string rollups for PW3
+                    # PW3 physically pairs inputs A+B, C+D, E+F.
+                    # Multi-PW3 single-gateway setups may also have A1-F1,
+                    # A2-F2, etc. — we detect suffixes and pair them too.
+                    pair_bases = [("A", "B"), ("C", "D"), ("E", "F")]
+                    # Collect unique suffixes ("" for A-F, "1" for A1-F1, ...)
+                    suffixes = set()
+                    for key in data.strings:
+                        if isinstance(key, str):
+                            base = key.rstrip("0123456789")
+                            suffix = key[len(base):]
+                            if base in ("A", "B", "C", "D", "E", "F"):
+                                suffixes.add(suffix)
+                    for suffix in sorted(suffixes):
+                        for (first, second), pair_name_base in zip(
+                            pair_bases, ("AB", "CD", "EF")
+                        ):
+                            a_key = first + suffix
+                            b_key = second + suffix
+                            sa = data.strings.get(a_key, {})
+                            sb = data.strings.get(b_key, {})
+                            if not isinstance(sa, dict) or not isinstance(sb, dict):
+                                continue
+                            if not sa and not sb:
+                                continue
+                            pair_name = pair_name_base + suffix.upper()
+                            p_prefix = f"{strings_prefix}/{pair_name}"
+                            v_a = _safe_float(sa.get("Voltage"))
+                            if v_a is not None:
+                                await self._safe_publish(
+                                    f"{p_prefix}/voltage",
+                                    f"{v_a:.2f}", retain, qos,
+                                )
+                            c_a = _safe_float(sa.get("Current"))
+                            c_b = _safe_float(sb.get("Current"))
+                            if c_a is not None or c_b is not None:
+                                total_c = (c_a or 0.0) + (c_b or 0.0)
+                                await self._safe_publish(
+                                    f"{p_prefix}/current",
+                                    f"{total_c:.2f}", retain, qos,
+                                )
+                            p_a = _safe_float(sa.get("Power"))
+                            p_b = _safe_float(sb.get("Power"))
+                            if p_a is not None or p_b is not None:
+                                total_p = (p_a or 0.0) + (p_b or 0.0)
+                                await self._safe_publish(
+                                    f"{p_prefix}/power",
+                                    f"{total_p:.2f}", retain, qos,
+                                )
 
                 # Summary JSON topic
                 summary = {
