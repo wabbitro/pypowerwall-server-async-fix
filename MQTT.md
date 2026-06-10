@@ -169,7 +169,9 @@ For Powerwall 3 systems where inputs are physically paired, derived rollups are 
 | `pypowerwall/{gw}/strings/{AB,CD,EF}/power` | `721.50` | `W` (sum of both strings) |
 
 For multi-PW3 single-gateway setups (e.g. two PW3s on one gateway), the strings endpoint
-may return `A`–`F` *and* `A1`–`F1`. Paired rollups are generated per suffix automatically:
+may return `A`–`F` *and* `A1`–`F1`. Paired rollups are generated per suffix automatically.
+**Paired rollup topics are only published when both strings in the pair exist** — if only one
+string of a pair is present (e.g. A without B), no AB rollup is emitted.
 
 | Topic | Value | Unit |
 |-------|-------|------|

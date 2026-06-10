@@ -510,6 +510,24 @@ class TestMqttStringTopics:
         assert "pypowerwall/test-gw/strings/EF/voltage" not in published
 
     @pytest.mark.asyncio
+    async def test_single_string_in_pair_no_rollup(self, monkeypatch):
+        """When only one string of a pair exists, no rollup is published."""
+        pub = self._make_publisher(monkeypatch)
+        status = self._make_status_with_strings({
+            "A": {"Voltage": 240.0, "Current": 1.5, "Power": 360.0},
+            # B is missing — AB rollup must NOT be published
+        })
+        await pub.publish_gateway("test-gw", status)
+
+        published = {c.args[0]: c.args[1] for c in pub._client.publish.call_args_list}
+        # A individual string topics should be published
+        assert "pypowerwall/test-gw/strings/A/voltage" in published
+        # AB rollup must NOT be published — B is missing
+        assert "pypowerwall/test-gw/strings/AB/voltage" not in published
+        assert "pypowerwall/test-gw/strings/AB/current" not in published
+        assert "pypowerwall/test-gw/strings/AB/power" not in published
+
+    @pytest.mark.asyncio
     async def test_multi_pw3_single_gateway_rollups(self, monkeypatch):
         """Multi-PW3 on single gateway: A-F and A1-F1 each get paired rollups."""
         pub = self._make_publisher(monkeypatch)

@@ -309,7 +309,7 @@ class MqttPublisher:
                             sb = data.strings.get(b_key, {})
                             if not isinstance(sa, dict) or not isinstance(sb, dict):
                                 continue
-                            if not sa and not sb:
+                            if not sa or not sb:
                                 continue
                             pair_name = pair_name_base + suffix.upper()
                             p_prefix = f"{strings_prefix}/{pair_name}"
