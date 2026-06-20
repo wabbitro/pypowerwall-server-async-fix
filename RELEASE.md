@@ -2,6 +2,14 @@
 
 ## Version History
 
+### [0.3.5] - 2026-06-19
+
+**Added:**
+- **Combined reserve+mode control endpoints** — `POST /control/reserve` and `POST /control/mode` now accept optional companion parameters (`mode=` and `level=` respectively) to update both reserve and mode in a single `set_operation()` call, avoiding duplicate Tesla audit-log entries. Fully backward compatible — omitting the companion parameter preserves original behavior. Ported from pypowerwall PR #308.
+  - `POST /control/reserve` accepts optional `mode=<self_consumption|backup|autonomous>`
+  - `POST /control/mode` accepts optional `level=<int>`
+  - Invalid companion values return HTTP 400 without making any Powerwall call
+
 ### [0.3.4] - 2026-06-07
 
 **Fixed:**

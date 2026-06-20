@@ -415,6 +415,135 @@ def test_control_rejects_wrong_token(control_client, connected_gateway):
         headers={"Authorization": "wrong-token"},
     )
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# /control companion parameter tests (ported from pypowerwall PR #308)
+# ---------------------------------------------------------------------------
+
+def test_control_reserve_with_valid_mode_calls_set_operation(
+    control_client, connected_gateway
+):
+    """POST /control/reserve with mode= companion should call set_operation."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    mock_cloud.set_operation.return_value = {"result": "Updated"}
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/reserve",
+        json={"value": 5, "mode": "self_consumption"},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    mock_cloud.set_operation.assert_called_once_with(5, "self_consumption")
+    mock_cloud.set_reserve.assert_not_called()
+    mock_cloud.set_mode.assert_not_called()
+
+
+def test_control_mode_with_valid_level_calls_set_operation(
+    control_client, connected_gateway
+):
+    """POST /control/mode with level= companion should call set_operation."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    mock_cloud.set_operation.return_value = {"result": "Updated"}
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/mode",
+        json={"value": "backup", "level": 80},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    mock_cloud.set_operation.assert_called_once_with(80, "backup")
+    mock_cloud.set_mode.assert_not_called()
+    mock_cloud.set_reserve.assert_not_called()
+
+
+def test_control_reserve_with_invalid_mode_returns_400(
+    control_client, connected_gateway
+):
+    """POST /control/reserve with invalid mode= should return 400, no cloud call."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/reserve",
+        json={"value": 5, "mode": "garbage"},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 400
+    mock_cloud.set_reserve.assert_not_called()
+    mock_cloud.set_operation.assert_not_called()
+
+
+def test_control_mode_with_invalid_level_returns_400(
+    control_client, connected_gateway
+):
+    """POST /control/mode with non-integer level= should return 400, no cloud call."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/mode",
+        json={"value": "backup", "level": "not-a-number"},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 400
+    mock_cloud.set_mode.assert_not_called()
+    mock_cloud.set_operation.assert_not_called()
+
+
+def test_control_reserve_companion_fallback_without_cloud(
+    control_client, connected_gateway, mock_pypowerwall
+):
+    """POST /control/reserve with mode= falls back to call_api when no cloud control."""
+    from app.core.gateway_manager import gateway_manager
+
+    gateway_manager._cloud_control = None
+    mock_pypowerwall.post.return_value = {"result": "Updated"}
+
+    response = control_client.post(
+        "/control/reserve",
+        json={"value": 5, "mode": "self_consumption"},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    mock_pypowerwall.post.assert_called_once()
+
+
+def test_control_mode_companion_fallback_without_cloud(
+    control_client, connected_gateway, mock_pypowerwall
+):
+    """POST /control/mode with level= falls back to call_api when no cloud control."""
+    from app.core.gateway_manager import gateway_manager
+
+    gateway_manager._cloud_control = None
+    mock_pypowerwall.post.return_value = {"result": "Updated"}
+
+    response = control_client.post(
+        "/control/mode",
+        json={"value": "backup", "level": 80},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    mock_pypowerwall.post.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # /api/operation tests (issue #14 — mode caching)
 # ---------------------------------------------------------------------------
 

@@ -94,11 +94,13 @@ async def control_api(
     Routes to cloud control connection for write operations (set_reserve, set_mode,
     set_grid_charging) when available, since TEDAPI doesn't support POST/write APIs.
     Falls back to direct post for cloud-mode or FleetAPI gateways.
+
+    Optional companion parameters (ported from pypowerwall PR #308):
+    - POST /control/reserve with mode=<mode> calls set_operation(level, mode)
+    - POST /control/mode with level=<int> calls set_operation(level, mode)
     """
     verify_control_token(authorization)
 
-    # Map control paths to pypowerwall cloud control methods.
-    # Used for TEDAPI gateways with cloud credentials (hybrid mode).
     # Validate grid_charging requires an explicit boolean value to prevent
     # silent state changes from malformed or empty payloads.
     if path == "grid_charging":
@@ -108,6 +110,89 @@ async def control_api(
                 detail="'value' must be a boolean (true or false)",
             )
 
+    # Optional companion parameters for combined reserve+mode writes.
+    # When a caller wants to change both reserve and mode, sending them in a
+    # single request avoids duplicate Tesla audit-log entries caused by
+    # set_reserve() + set_mode() each calling set_operation() internally.
+    # Omitting the companion parameter preserves the original behaviour.
+    valid_modes = ["self_consumption", "backup", "autonomous"]
+
+    if path == "reserve" and "mode" in data:
+        mode_val = data["mode"]
+        if mode_val not in valid_modes:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid 'mode' companion value. Must be one of: "
+                       + ", ".join(valid_modes),
+            )
+        level = data.get("value", 0)
+        if not isinstance(level, int):
+            raise HTTPException(
+                status_code=400,
+                detail="'value' must be an integer reserve level",
+            )
+        if gateway_manager._cloud_control:
+            result = await gateway_manager.cloud_control(
+                "set_operation", level, mode_val, timeout=10.0
+            )
+            if result is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Control operation failed via cloud",
+                )
+            return result
+        # Fallback for cloud-mode/FleetAPI gateways
+        gateway_id = get_default_gateway()
+        result = await gateway_manager.call_api(
+            gateway_id, "post", "/api/operation",
+            {"level": level, "mode": mode_val}, timeout=10.0
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Control operation failed or gateway not available",
+            )
+        return result
+
+    if path == "mode" and "level" in data:
+        level_val = data["level"]
+        if not isinstance(level_val, int):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid 'level' companion value. Must be an integer.",
+            )
+        mode = data.get("value", "self_consumption")
+        if mode not in valid_modes:
+            raise HTTPException(
+                status_code=400,
+                detail="'value' must be a valid mode: "
+                       + ", ".join(valid_modes),
+            )
+        if gateway_manager._cloud_control:
+            result = await gateway_manager.cloud_control(
+                "set_operation", level_val, mode, timeout=10.0
+            )
+            if result is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Control operation failed via cloud",
+                )
+            return result
+        # Fallback for cloud-mode/FleetAPI gateways
+        gateway_id = get_default_gateway()
+        result = await gateway_manager.call_api(
+            gateway_id, "post", "/api/operation",
+            {"level": level_val, "mode": mode}, timeout=10.0
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Control operation failed or gateway not available",
+            )
+        return result
+
+    # Map control paths to pypowerwall cloud control methods.
+    # Used for TEDAPI gateways with cloud credentials (hybrid mode).
     cloud_control_map = {
         "reserve": ("set_reserve", lambda d: [d.get("value", 0)]),
         "mode": ("set_mode", lambda d: [d.get("value", "self_consumption")]),
