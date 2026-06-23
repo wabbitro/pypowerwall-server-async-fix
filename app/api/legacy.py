@@ -126,7 +126,7 @@ async def control_api(
                        + ", ".join(valid_modes),
             )
         level = data.get("value", 0)
-        if not isinstance(level, int):
+        if not isinstance(level, int) or isinstance(level, bool):
             raise HTTPException(
                 status_code=400,
                 detail="'value' must be an integer reserve level",
@@ -156,7 +156,7 @@ async def control_api(
 
     if path == "mode" and "level" in data:
         level_val = data["level"]
-        if not isinstance(level_val, int):
+        if not isinstance(level_val, int) or isinstance(level_val, bool):
             raise HTTPException(
                 status_code=400,
                 detail="Invalid 'level' companion value. Must be an integer.",

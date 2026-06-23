@@ -505,6 +505,46 @@ def test_control_mode_with_invalid_level_returns_400(
     mock_cloud.set_operation.assert_not_called()
 
 
+def test_control_reserve_with_boolean_value_returns_400(
+    control_client, connected_gateway
+):
+    """POST /control/reserve with boolean value should return 400, no cloud call."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/reserve",
+        json={"value": True, "mode": "backup"},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 400
+    mock_cloud.set_reserve.assert_not_called()
+    mock_cloud.set_operation.assert_not_called()
+
+
+def test_control_mode_with_boolean_level_returns_400(
+    control_client, connected_gateway
+):
+    """POST /control/mode with boolean level= should return 400, no cloud call."""
+    from app.core.gateway_manager import gateway_manager
+
+    mock_cloud = Mock()
+    gateway_manager._cloud_control = mock_cloud
+
+    response = control_client.post(
+        "/control/mode",
+        json={"value": "backup", "level": False},
+        headers={"Authorization": _CONTROL_TOKEN},
+    )
+
+    assert response.status_code == 400
+    mock_cloud.set_mode.assert_not_called()
+    mock_cloud.set_operation.assert_not_called()
+
+
 def test_control_reserve_companion_fallback_without_cloud(
     control_client, connected_gateway, mock_pypowerwall
 ):
