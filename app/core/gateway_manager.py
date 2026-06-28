@@ -811,7 +811,7 @@ class GatewayManager:
             # get_fan_speeds() lives on the TEDAPI client (pw.tedapi),
             # not on the top-level Powerwall object itself
             try:
-                if pw.tedapi and hasattr(pw.tedapi, "get_fan_speeds"):
+                if hasattr(pw, "tedapi") and pw.tedapi and hasattr(pw.tedapi, "get_fan_speeds"):
                     data.fan_speeds = await asyncio.wait_for(
                         loop.run_in_executor(self._executor, pw.tedapi.get_fan_speeds),
                         timeout=5.0,
