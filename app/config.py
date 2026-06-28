@@ -76,8 +76,8 @@ Connection Modes:
         • Fastest, most reliable
         • Requires direct connection to gateway WiFi or local network
         • Configuration: PW_HOST + PW_GW_PWD  (password-based)
-        •            OR: PW_HOST + PW_RSA_KEY_PATH  (RSA key-based, v1r mode)
-        • Example: 192.168.91.1 with gateway password or RSA PEM key
+        •            OR: PW_HOST + PW_GW_PWD + PW_RSA_KEY_PATH  (RSA key + v1r mode)
+        • Example: 192.168.91.1 with gateway password (optionally with RSA PEM key for v1r mode)
     
     Cloud Mode:
         • Remote access from anywhere
