@@ -2,6 +2,12 @@
 
 ## Version History
 
+### [0.3.6] - 2026-06-27
+
+**Changed:**
+- Bumped `pypowerwall` dependency to `0.15.12` — brings in HTTP/2 support for Tesla Owner API calls (v0.15.11, required by Tesla for `auth.tesla.com` and `owner-api.teslamotors.com` endpoints) and remote setup / cloud auth improvements including headless setup 403 fix, `cloudcheck` diagnostics command, and `authtoken` dual-token output (v0.15.12).
+- Minimum `pypowerwall` version in `pyproject.toml` raised from `>=0.14.0` to `>=0.15.12`.
+
 ### [0.3.5] - 2026-06-19
 
 **Added:**
