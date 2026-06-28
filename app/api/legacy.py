@@ -199,14 +199,21 @@ async def control_api(
         "grid_charging": ("set_grid_charging", lambda d: [d["value"]]),
     }
 
-    if path in cloud_control_map and gateway_manager._cloud_control:
+    if path in cloud_control_map:
         method, args_fn = cloud_control_map[path]
-        result = await gateway_manager.cloud_control(
-            method, *args_fn(data), timeout=10.0
-        )
+        if gateway_manager._cloud_control:
+            result = await gateway_manager.cloud_control(
+                method, *args_fn(data), timeout=10.0
+            )
+        else:
+            # v1r local mode: no cloud credentials, fall back to direct post
+            gateway_id = get_default_gateway()
+            result = await gateway_manager.call_api(
+                gateway_id, "post", f"/api/{path}", data, timeout=10.0
+            )
         if result is None:
             raise HTTPException(
-                status_code=503, detail="Control operation failed via cloud"
+                status_code=503, detail=f"Control operation failed for {path}"
             )
         return result
 
@@ -1843,3 +1850,4 @@ async def get_version():
         pass
 
     return {"version": version, "vint": vint}
+
