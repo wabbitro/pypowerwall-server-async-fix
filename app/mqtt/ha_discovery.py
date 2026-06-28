@@ -21,6 +21,14 @@ Sensors (numeric):
     powerwall   — Powerwall power (W, device_class=power, positive=discharging)
     reserve     — Backup reserve target (%)
 
+Solar string sensors (when string_ids provided):
+    strings/{id}/voltage  — String voltage (V, per string A–F or multi-PW3 A1–F2…)
+    strings/{id}/current  — String current (A)
+    strings/{id}/power    — String power (W)
+    strings/{AB}/voltage  — Paired-string voltage (V, from first string in pair)
+    strings/{AB}/current  — Paired-string current (A, sum of pair)
+    strings/{AB}/power    — Paired-string power (W, sum of pair)
+
 Text sensors:
     grid_status — "UP" | "DOWN" | "unknown"
     mode        — Operation mode string (e.g. "self_consumption", "backup")
@@ -41,7 +49,7 @@ References
 """
 import json
 import logging
-from typing import Optional
+from typing import Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +71,7 @@ def build_discovery_payloads(
     topic_prefix: str,
     ha_prefix: str,
     version: Optional[str] = None,
+    string_ids: Optional[Sequence[str]] = None,
 ) -> list[tuple[str, str]]:
     """Build all HA auto-discovery (topic, payload) pairs for a gateway.
 
@@ -72,6 +81,11 @@ def build_discovery_payloads(
         topic_prefix:  MQTT topic prefix (e.g. "pypowerwall").
         ha_prefix:     Home Assistant discovery prefix (e.g. "homeassistant").
         version:       Powerwall firmware version string (optional).
+        string_ids:    Solar string identifiers present on this gateway (e.g.
+                       ["A", "B", "C", "D", "E", "F"] for a single PW3, or
+                       ["A1", "B1", …, "F2"] for a multi-PW3 setup).  When
+                       provided, per-string and paired-rollup sensors are added
+                       to the discovery payloads so HA auto-discovers them.
 
     Returns:
         List of (topic, json_payload_str) tuples, one per sensor/binary sensor.
@@ -245,4 +259,60 @@ def build_discovery_payloads(
             icon="mdi:lan-connect",
         ),
     ]
+
+    # --- Solar string sensors (per-string + paired rollups) ---
+    if string_ids:
+        strings_prefix = f"{data_prefix}/strings"
+        _STRING_METRICS = [
+            ("voltage", "Voltage", "V",  "voltage", "mdi:lightning-bolt"),
+            ("current", "Current", "A",  "current", "mdi:current-ac"),
+            ("power",   "Power",   "W",  "power",   "mdi:solar-power-variant"),
+        ]
+        _PAIR_BASES = [("A", "B", "AB"), ("C", "D", "CD"), ("E", "F", "EF")]
+
+        # Per-string sensors (A–F, A1–F1, A2–F2, …)
+        for sid in string_ids:
+            s_prefix = f"{strings_prefix}/{sid}"
+            sid_slug = sid.lower()
+            for metric, label, unit, dc, icon in _STRING_METRICS:
+                results.append(sensor(
+                    f"string_{sid_slug}_{metric}",
+                    f"String {sid} {label}",
+                    f"{s_prefix}/{metric}",
+                    unit=unit,
+                    device_class=dc,
+                    state_class="measurement",
+                    icon=icon,
+                    entity_category="diagnostic",
+                ))
+
+        # Paired-string rollup sensors (AB, CD, EF + numbered variants)
+        sid_set = set(string_ids)
+        suffixes: set[str] = set()
+        for sid in string_ids:
+            base = sid.rstrip("0123456789")
+            if base in ("A", "B", "C", "D", "E", "F"):
+                suffixes.add(sid[len(base):])
+
+        for suffix in sorted(suffixes):
+            for first, second, pair_base in _PAIR_BASES:
+                a_key = first + suffix
+                b_key = second + suffix
+                if a_key not in sid_set or b_key not in sid_set:
+                    continue
+                pair_name = pair_base + suffix.upper()
+                p_prefix = f"{strings_prefix}/{pair_name}"
+                pair_slug = pair_name.lower()
+                for metric, label, unit, dc, icon in _STRING_METRICS:
+                    results.append(sensor(
+                        f"string_{pair_slug}_{metric}",
+                        f"String {pair_name} {label}",
+                        f"{p_prefix}/{metric}",
+                        unit=unit,
+                        device_class=dc,
+                        state_class="measurement",
+                        icon=icon,
+                        entity_category="diagnostic",
+                    ))
+
     return results

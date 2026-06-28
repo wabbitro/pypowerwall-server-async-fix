@@ -199,6 +199,85 @@ class TestBuildDiscoveryPayloads:
             p = json.loads(payload_str)
             assert p["device"]["sw_version"] == "unknown"
 
+    def test_no_string_sensors_when_string_ids_absent(self):
+        """When string_ids is not supplied, no string sensors are added."""
+        results = build_discovery_payloads(
+            gateway_id="home",
+            gateway_name="Home",
+            topic_prefix="pypowerwall",
+            ha_prefix="homeassistant",
+        )
+        string_topics = [t for t, _ in results if "_string_" in t]
+        assert string_topics == []
+        assert len(results) == 11
+
+    def test_string_sensors_single_pw3(self):
+        """Six strings A–F → 6×3 per-string + 3×3 paired rollup = 27 extra entries."""
+        string_ids = ["A", "B", "C", "D", "E", "F"]
+        results = build_discovery_payloads(
+            gateway_id="home",
+            gateway_name="Home",
+            topic_prefix="pypowerwall",
+            ha_prefix="homeassistant",
+            string_ids=string_ids,
+        )
+        payloads = {t: json.loads(p) for t, p in results}
+        # 11 base + 6 strings × 3 metrics + 3 pairs × 3 metrics = 11 + 18 + 9 = 38
+        assert len(results) == 38
+
+        # Spot-check string A voltage
+        topic = "homeassistant/sensor/pypowerwall_home_string_a_voltage/config"
+        assert topic in payloads
+        p = payloads[topic]
+        assert p["unit_of_measurement"] == "V"
+        assert p["device_class"] == "voltage"
+        assert p["state_topic"] == "pypowerwall/home/strings/A/voltage"
+        assert p["entity_category"] == "diagnostic"
+
+        # Spot-check paired rollup AB power
+        topic = "homeassistant/sensor/pypowerwall_home_string_ab_power/config"
+        assert topic in payloads
+        p = payloads[topic]
+        assert p["unit_of_measurement"] == "W"
+        assert p["device_class"] == "power"
+        assert p["state_topic"] == "pypowerwall/home/strings/AB/power"
+
+    def test_string_sensors_partial_strings(self):
+        """Only strings present are discovered — no entities for missing strings."""
+        string_ids = ["A", "B"]
+        results = build_discovery_payloads(
+            gateway_id="home",
+            gateway_name="Home",
+            topic_prefix="pypowerwall",
+            ha_prefix="homeassistant",
+            string_ids=string_ids,
+        )
+        payloads = {t: json.loads(p) for t, p in results}
+        # 11 base + 2×3 per-string + 1 pair (AB) × 3 = 11 + 6 + 3 = 20
+        assert len(results) == 20
+        # AB pair present
+        assert "homeassistant/sensor/pypowerwall_home_string_ab_voltage/config" in payloads
+        # CD and EF pairs must NOT be present (C/D/E/F not in string_ids)
+        assert "homeassistant/sensor/pypowerwall_home_string_cd_power/config" not in payloads
+
+    def test_string_sensors_multi_pw3(self):
+        """Multi-PW3 numbered strings (A1–F2) generate correct paired rollups."""
+        string_ids = ["A1", "B1", "C1", "D1", "E1", "F1",
+                      "A2", "B2", "C2", "D2", "E2", "F2"]
+        results = build_discovery_payloads(
+            gateway_id="home",
+            gateway_name="Home",
+            topic_prefix="pypowerwall",
+            ha_prefix="homeassistant",
+            string_ids=string_ids,
+        )
+        payloads = {t: json.loads(p) for t, p in results}
+        # 11 base + 12×3 per-string + 6 pairs × 3 = 11 + 36 + 18 = 65
+        assert len(results) == 65
+        # Spot-check numbered pair AB1
+        assert "homeassistant/sensor/pypowerwall_home_string_ab1_voltage/config" in payloads
+        assert "homeassistant/sensor/pypowerwall_home_string_ab2_power/config" in payloads
+
 
 # ---------------------------------------------------------------------------
 # Integration tests for MqttPublisher._publish_ha_discovery()

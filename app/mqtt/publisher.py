@@ -137,12 +137,17 @@ class MqttPublisher:
             )
             version = status.data.version if status.data else None
 
+            string_ids = None
+            if status.data and status.data.strings and isinstance(status.data.strings, dict):
+                string_ids = list(status.data.strings.keys())
+
             payloads = build_discovery_payloads(
                 gateway_id=gateway_id,
                 gateway_name=gateway_name,
                 topic_prefix=settings.mqtt_topic_prefix,
                 ha_prefix=settings.mqtt_ha_prefix,
                 version=version,
+                string_ids=string_ids,
             )
             for topic, payload in payloads:
                 await self._safe_publish(topic, payload, retain=True, qos=settings.mqtt_qos)

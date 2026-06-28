@@ -2,6 +2,15 @@
 
 ## Version History
 
+### [0.3.7] - 2026-06-28
+
+**Added:**
+- **HA MQTT discovery for solar string sensors** — `ha_discovery.py` now publishes Home Assistant auto-discovery configs for all solar string MPPT metrics added in v0.3.5. Per-string sensors (voltage, current, power for strings A–F) and paired-rollup sensors (AB, CD, EF) are auto-discovered in HA when string data is present on the gateway. Multi-PW3 setups with numbered strings (A1–F2, etc.) are also supported. Previously, the string MQTT topics were publishing correctly but HA never received discovery payloads for them (#57, #59).
+
+**Fixed:**
+- **Fan speeds not fetched from TEDAPI** — `pw.vitals()` fan speed fields were silently dropped because the TEDAPI client lacked the `get_fan_speeds()` call path. Fan RPM is now included in vitals data for PW3 systems on TEDAPI (#58).
+- **v1r local mode write routing** — control endpoints (`reserve`, `mode`, `grid_charging`) were skipped entirely when no cloud credentials were configured, even in v1r local mode. The `cloud_control_map` check is now split from the `_cloud_control` availability check so that mapped paths fall through to a direct `call_api` POST for local v1r control. Thanks @wabbitro (#60).
+
 ### [0.3.6] - 2026-06-27
 
 **Changed:**
