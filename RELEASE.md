@@ -7,14 +7,19 @@
 **Changed:**
 - Bumped `pypowerwall` dependency to `0.15.12` — brings in HTTP/2 support for Tesla Owner API calls (v0.15.11, required by Tesla for `auth.tesla.com` and `owner-api.teslamotors.com` endpoints) and remote setup / cloud auth improvements including headless setup 403 fix, `cloudcheck` diagnostics command, and `authtoken` dual-token output (v0.15.12).
 - Minimum `pypowerwall` version in `pyproject.toml` raised from `>=0.14.0` to `>=0.15.12`.
+- **`mqtt-tools/monitor.py` — refreshed dark palette** with a brighter modern dark theme and adjusted color assignments for better readability.
 
 ### [0.3.5] - 2026-06-19
 
 **Added:**
-- **Combined reserve+mode control endpoints** — `POST /control/reserve` and `POST /control/mode` now accept optional companion parameters (`mode=` and `level=` respectively) to update both reserve and mode in a single `set_operation()` call, avoiding duplicate Tesla audit-log entries. Fully backward compatible — omitting the companion parameter preserves original behavior. Ported from pypowerwall PR #308.
+- **MQTT solar string topics + PW3 paired rollups** — per-string solar data is now published to MQTT under `{prefix}/{gw}/strings/{A-F}/` (voltage, current, power, and full JSON). For PW3 dual-inverter setups, paired rollup topics (`AB`, `CD`, `EF`) are also published when both strings in a pair are present. Multi-gateway aware; graceful degradation when string data is unavailable (#48, #49).
+- **Combined reserve+mode control endpoints** — `POST /control/reserve` and `POST /control/mode` now accept optional companion parameters (`mode=` and `level=` respectively) to update both reserve and mode in a single `set_operation()` call, avoiding duplicate Tesla audit-log entries. Fully backward compatible — omitting the companion parameter preserves original behavior. Ported from pypowerwall PR #308 (#52).
   - `POST /control/reserve` accepts optional `mode=<self_consumption|backup|autonomous>`
   - `POST /control/mode` accepts optional `level=<int>`
   - Invalid companion values return HTTP 400 without making any Powerwall call
+
+**Fixed:**
+- **Serialize concurrent write operations** — concurrent `/control/reserve` + `/control/mode` requests could race on the poll cache. A per-`GatewayManager` write lock now serializes all write calls through `call_api`, preventing corrupted state under concurrent load. Thanks @wabbitro (#55, #56).
 
 ### [0.3.4] - 2026-06-07
 
