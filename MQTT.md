@@ -147,6 +147,38 @@ Base path: `{MQTT_TOPIC_PREFIX}/{gateway_id}/`
 | `pypowerwall/{gw}/aggregates` | Full `/api/meters/aggregates` JSON |
 | `pypowerwall/{gw}/status` | `{"online": true, "soe": 85.3, "mode": "...", ...}` summary |
 
+### Solar string topics (per-string voltage, current, power)
+
+Individual string topics are published when string data is available from the gateway:
+
+| Topic | Value | Unit |
+|-------|-------|------|
+| `pypowerwall/{gw}/strings/{A-F}/voltage` | `240.50` | `V` |
+| `pypowerwall/{gw}/strings/{A-F}/current` | `1.50` | `A` |
+| `pypowerwall/{gw}/strings/{A-F}/power` | `360.75` | `W` |
+| `pypowerwall/{gw}/strings/{A-F}` | `{"Voltage": ..., "Current": ..., "Power": ...}` | JSON |
+
+### PW3 paired-string rollups (AB, CD, EF)
+
+For Powerwall 3 systems where inputs are physically paired, derived rollups are published:
+
+| Topic | Value | Unit |
+|-------|-------|------|
+| `pypowerwall/{gw}/strings/{AB,CD,EF}/voltage` | `240.50` | `V` (from first string in pair) |
+| `pypowerwall/{gw}/strings/{AB,CD,EF}/current` | `3.00` | `A` (sum of both strings) |
+| `pypowerwall/{gw}/strings/{AB,CD,EF}/power` | `721.50` | `W` (sum of both strings) |
+
+For multi-PW3 single-gateway setups (e.g. two PW3s on one gateway), the strings endpoint
+may return `A`–`F` *and* `A1`–`F1`. Paired rollups are generated per suffix automatically.
+**Paired rollup topics are only published when both strings in the pair exist** — if only one
+string of a pair is present (e.g. A without B), no AB rollup is emitted.
+
+| Topic | Value | Unit |
+|-------|-------|------|
+| `pypowerwall/{gw}/strings/AB1/voltage` | `310.00` | `V` |
+| `pypowerwall/{gw}/strings/AB1/current` | `0.40` | `A` |
+| `pypowerwall/{gw}/strings/AB1/power` | `124.00` | `W` |
+
 ### Availability topic (for HA)
 
 | Topic | Value |
@@ -455,5 +487,18 @@ pypowerwall/default/reserve          20.0
 pypowerwall/default/online           true
 pypowerwall/default/aggregates       {...}
 pypowerwall/default/status           {...}
+pypowerwall/default/strings/A/voltage   240.50
+pypowerwall/default/strings/A/current   1.50
+pypowerwall/default/strings/A/power     360.75
+pypowerwall/default/strings/A           {"Voltage": 240.5, "Current": 1.5, "Power": 360.75, ...}
+pypowerwall/default/strings/B/voltage   240.25
+pypowerwall/default/strings/B/current   1.25
+pypowerwall/default/strings/B/power     300.31
+pypowerwall/default/strings/B           {...}
+...
+pypowerwall/default/strings/AB/voltage  240.50
+pypowerwall/default/strings/AB/current  2.75
+pypowerwall/default/strings/AB/power    661.06
+...
 ```
 
