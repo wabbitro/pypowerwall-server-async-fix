@@ -508,6 +508,45 @@ async def test_cloud_control_success(mock_gateway_manager):
 
 
 @pytest.mark.asyncio
+async def test_cloud_control_serializes_concurrent_write_calls(mock_gateway_manager):
+    """Test cloud_control serializes concurrent write calls through the shared lock."""
+    events = []
+
+    def make_writer(name):
+        def writer(*args, **kwargs):
+            events.append(f"{name}-start")
+            if name == "reserve":
+                events.append("reserve-before-sleep")
+                import time
+
+                time.sleep(0.05)
+            events.append(f"{name}-end")
+            return True
+
+        return writer
+
+    mock_cloud = Mock()
+    mock_cloud.set_reserve.side_effect = make_writer("reserve")
+    mock_cloud.set_mode.side_effect = make_writer("mode")
+    mock_gateway_manager._cloud_control = mock_cloud
+
+    await asyncio.gather(
+        mock_gateway_manager.cloud_control("set_reserve", 20),
+        mock_gateway_manager.cloud_control("set_mode", "self_consumption"),
+    )
+
+    assert events == [
+        "reserve-start",
+        "reserve-before-sleep",
+        "reserve-end",
+        "mode-start",
+        "mode-end",
+    ]
+    mock_cloud.set_reserve.assert_called_once_with(20)
+    mock_cloud.set_mode.assert_called_once_with("self_consumption")
+
+
+@pytest.mark.asyncio
 async def test_cloud_control_no_connection(mock_gateway_manager):
     """Test cloud_control returns None immediately when _cloud_control is not set."""
     mock_gateway_manager._cloud_control = None
