@@ -206,10 +206,10 @@ async def control_api(
                 method, *args_fn(data), timeout=10.0
             )
         else:
-            # v1r local mode: no cloud credentials, fall back to direct post
+            # v1r local mode: call pypowerwall method directly (routes through write_config_v1r)
             gateway_id = get_default_gateway()
             result = await gateway_manager.call_api(
-                gateway_id, "post", f"/api/{path}", data, timeout=10.0
+                gateway_id, method, *args_fn(data), timeout=10.0
             )
         if result is None:
             raise HTTPException(
